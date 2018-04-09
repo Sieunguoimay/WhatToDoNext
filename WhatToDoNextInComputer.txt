@@ -1,0 +1,37 @@
+5/4/2018
+	//- gui link photoshop cho ben. Hoi xem x64 hay x86
+	//- gui mail cho chi thu. File anh.
+	//- search for a suitable ER model. and send to Vipul. Ask him what to do next.
+	//- programming to implement APSA problem - Dynamic Programming method and Floyd Warshall Algorithm
+	//- Learn Travelling saleman Problem. and implement.
+
+6/4/2018
+	//- activate office for Hoa Nguyen.
+	//- Upload file english for Ms Loc & Ms Thu and then send the link.
+
+7/4/2018
+	//- Gui link tieng anh cho Ms Thu.
+	- implement algorithm: 	//Travelling saleman problem
+				Matrix Chain multiplication
+	//- Soan thao ppt file. And message Vipul for the relational model.
+	//- DBMS ask vipul for the right form. just same as the form of Vivek? and finish it.
+	
+
+8/4/2018
+	//- finish ppt
+	//- go out to print the DBMS file
+	//- goi dien cho vinh hoa
+
+
+9/04/2018
+	- Amazon delivery, Book How to love - Thich Nhat Hanh
+	- OS lab. Semaphore understanding
+	- Implement ADA algorithms: 	Matrix chain multiplication
+					Back Tracking algorithms:(sum of subset,8queens,I/O knapsack) 
+	- Tomorrow there will be DE viva.
+
+
+
+On 13/04/2018. OS assignment submision
+On 16/04/2018, there will be DBMS viva.
+On 17/04/2018. There will be FoM group presentation
