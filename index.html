@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="css/bootstrap.min.css"></link>
+    <script src="js/jquery.js"></script>
+    <script src="js/socket.io.js"></script>
+    <script src="js/WebRTCConnection.js"></script>
+    <style>
+        body{
+            margin-top:30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <div id="user_form_area" class="row justify-content-center">
+            <div class="col-md-4">
+                <div class="form-group" id="user_form">
+                    <label for="username">Enter Your Name</label>
+                    <input id="username" class="form-control" type="text"/><br>
+                    <button class="btn btn-primary submit-button" id="btn_login">OK</button>
+                </div>
+            </div>
+        </div>
+        <div class="container" id="message_area">
+            <div class="row justify-content-center">
+                <h2 id="h3_user_name">No name</h2>
+            </div>
+            <div class="row">
+
+                <div class="col-md-4">
+                    <div class="well">
+                        <h3>Online Users</h3>
+                        <ul class="list-group" id="ul_users"></ul>
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <label for="chat" id="current_peer" style="font-weight: bold;">No Peer</label>
+                    <div class="chat" id="chat" style="background-color:#f1f1f1"></div>
+                    <div class="form-group">
+                        <label for="message" style="font-weight: bold;">Enter Message</label>
+                        <input id="message" class="form-control" type="text"/>
+                        <br>
+                        <button class="btn btn-primary submit-button" id="btn_send_message">Send Message</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        $('input[type="text"]').keypress(function (e) {
+            var code = e.keyCode || e.which;
+            if (code === 13){
+                e.preventDefault();
+                $(this).parent().find('.submit-button').trigger('click');
+            }
+        });
+        $(function(){
+            // var socket = io('localhost:3000');
+            var socket = io('https://snmsocket.herokuapp.com/');
+            socket.on('connect',function(){
+                console.log("Connected to server");
+            });
+
+            var $messageArea = $('#message_area');
+            var $btnSendMessage = $('#btn_send_message');
+            var $message = $('#message');
+            var $chat = $('#chat');
+            var $currentPeer = $('#current_peer');
+            $messageArea.hide();
+            $btnSendMessage.prop('disabled',true);
+            $message.prop('disabled',true);
+
+            var $userFormArea = $('#user_form_area');
+            var $userForm = $('#user_form');
+            var $userName = $('#username');
+            var $btnLogin = $('#btn_login');
+            var $users = $('#ul_users');
+
+            $btnSendMessage.click(function(){
+                console.log("sent: ",$message.val());
+                // socket.emit('send_message',$message.val());
+                $chat.append('<div class="well">'+user.userName+':'+$message.val()+'</div>');
+                for(var i = 0; i<connections.length; i++){
+                    if(connections[i].rtcConnection.connected)
+                        connections[i].rtcConnection.dataChannel.send(JSON.stringify({name:user.userName,message:$message.val()}));
+                }
+                $message.val('');
+            });
+            socket.on('new_message',function(data){
+                // $chat.append('<div class="well">'+data.message+'</div>')
+                console.log(data.message.name,user.userName,data.message.signal);
+                if(data.message.name != user.userName&&data.message.peer == user.userName){
+                    var newConnection = true;
+                    for(var i = 0; i<connections.length; i++){
+                        if(connections[i].peer == data.message.name){
+                            newConnection = false;
+                            connections[i].rtcConnection.handleSignalingMessage(data.message.signal);
+                            break;
+                        }
+                    }
+                    if(newConnection){
+                        connections.push(new Connection(data.message.name,createNewConnection(data.message.name)));
+                        connections[connections.length-1].rtcConnection.handleSignalingMessage(data.message.signal);
+                    }
+                }
+            });
+            $btnLogin.click(function(){
+                if($userName.val()){
+                    user.userName = $userName.val();
+                    $('#h3_user_name').text(user.userName);
+                    socket.emit('join',user.userName,function(data){
+                        if(data){
+                            $userFormArea.hide();
+                            $messageArea.show();
+                        }
+                    });
+                }
+            });
+
+            socket.on('new_user',function(data){
+                var html = '';
+                for(var i = 0; i<data.length;i++){
+                    html+='<li class="list-group-item user-name" style="cursor: pointer;">'+data[i]+'</li>';
+                }
+                $users.html(html);
+            });
+            var $btnConnectToPeer = $('#btn_connect_to_peer');
+            $btnConnectToPeer.click(function(){
+            });
+
+            $(document).on('click','.user-name',function(e){
+                var peer = $(this).text();
+                if(peer!=user.userName){
+                    console.log(peer);
+                    var newConnection = true;
+                    for(var i = 0; i<connections.length; i++){
+                        if(connections[i].peer == peer){
+                            newConnection = false;
+                            if(!connections[i].rtcConnection.connected)
+                                connections[i].rtcConnection.connect();
+                            break;
+                        }
+                    }
+                    if(newConnection){
+                        connections.push(new Connection(peer,createNewConnection(peer)));
+                        connections[connections.length-1].rtcConnection.connect();
+                    }
+                }
+            });
+            $(document).on('click','.btn-remove-peer',function(){
+                var peer = $(this).attr('tag');
+                console.log("Disconnect to ",peer);
+                for(var i = 0; i<connections.length; i++){
+                    if(peer == connections[i].peer){
+                        connections[i].rtcConnection.destroy();
+                        break;
+                    }
+                }
+            });
+            let user = {};
+            user.userName = "No Name";
+
+            class Connection{
+                constructor(peer,rtcConnection){
+                    this.peer = peer;
+                    this.rtcConnection = rtcConnection;
+                }
+            };
+            let connections = [];
+            function getAllPeerNames(){
+                var name = "";
+                if(connections.length == 0)name="No connection";
+                for(var i = 0; i<connections.length; i++){
+                    name+=connections[i].peer + '<button class="btn-remove-peer" tag="'+connections[i].peer+'">x</button>';
+                }
+                return name;
+            }
+
+            function createNewConnection(peerName){
+                let localConnection = new WebRTCConnection();
+                localConnection.connected = false;
+                localConnection.onerror = function(error){}
+                localConnection.onopen = function(e){
+                    console.log("WebRTC Connection ready",e);
+
+                    $btnConnectToPeer.prop('disabled',true);
+                    $currentPeer.html(getAllPeerNames());
+                    $btnSendMessage.prop('disabled',false);
+                    $message.prop('disabled',false);
+
+                    localConnection.connected = true;
+                }
+                localConnection.onclose = function(e){
+                    localConnection.connected = false;
+                    
+                    for(var i = 0; i<connections.length; i++){
+                        if(connections[i].rtcConnection == localConnection){
+                            connections.splice(i,1);
+                            $currentPeer.html(getAllPeerNames());
+                            console.log("disconnected",connections);
+                            break;
+                        }
+                    }
+
+                    if(connections.length == 0){
+                        console.log("WebRTC Connection terminated",e);
+                        $btnConnectToPeer.prop('disabled',false);
+                        $btnSendMessage.prop('disabled',true);
+                        $message.prop('disabled',true);
+
+                    }
+                }
+                localConnection.onmessage = function(e){		
+                    const message = JSON.parse(e.data);
+                    $chat.append('<div class="well">'+message.name+':'+message.message+'</div>');
+                }
+                localConnection.sendSignalingMessage = function(e){
+                    socket.emit('send_message',{name:user.userName,signal:e,peer:peerName});
+                }
+                return localConnection;
+            }
+
+        });
+    </script>
+</body>
+</html>

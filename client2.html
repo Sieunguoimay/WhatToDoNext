@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        var ws = new WebSocket('ws://arcane-garden-62429.herokuapp.com/socket.io/?EIO=3&transport=websocket');
+        ws.send('42' + JSON.stringify(['hello', 'there']));
+    </script>
+</body>
+</html>
