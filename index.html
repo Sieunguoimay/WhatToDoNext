@@ -50,6 +50,10 @@
                 </div>
             </div>
         </div>
+		<div class="row">
+			<button id="btn_start_screen_capture">Share your screen</button>
+			<video id="video_display_screen" autoplay=true></video>
+		</div>
     </div>
     <script>
         $('input[type="text"]').keypress(function (e) {
@@ -224,6 +228,24 @@
                 }
                 return localConnection;
             }
+
+            //sharing the screen
+            $('#btn_start_screen_capture').on('click',function(){
+                var videoElement = $('#video_display_screen')[0];
+                if(videoElement.srcObject == null){
+                    $(this).text('Stop sharing');
+                    navigator.mediaDevices.getDisplayMedia()
+                        .then(stream =>{
+                            videoElement.srcObject = stream;
+                            console.log("hey");
+                        });
+                }else{
+                    $(this).text('Start sharing screen');
+                    videoElement.srcObject.getTracks().forEach(track => track.stop());
+                    videoElement.srcObject = null;
+
+                }
+            });
 
         });
     </script>

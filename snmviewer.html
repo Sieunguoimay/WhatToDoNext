@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="css/bootstrap.min.css"></link>
+    <link rel="stylesheet" href="css/font-awesome.min.css"></link>
+    <script src="js/jquery.js"></script>
+    <script src="js/socket.io.js"></script>
+    <script src="js/WebRTCConnection.js"></script>
+    <style>
+        body{
+            margin-top:30px;
+        }
+    </style>
+</head>
+<body>
+    <h2 style="text-align: center;">SNMViewer</h2><br>
+    <div class="container">
+
+        <div id="user_form_area" class="row justify-content-center">
+            <div class="col-md-4">
+                <div class="form-group" id="user_form">
+                    <label for="name">Enter Your Name</label>
+                    <input id="name" class="form-control" type="text"/><br>
+                    <button class="btn btn-primary submit-button" id="btn_login">OK</button>
+                </div>
+            </div>
+        </div>
+        <div class="container" id="main_area" >
+            <div class="row justify-content-center">
+                <h2 id="h3_user_name">No name</h2>
+            </div>
+            <div class="row">
+
+                <div class="col-md-4">
+                    <div class="well">
+                        <h3>Online Users</h3>
+                        <ul class="list-group" id="ul_users"></ul>
+                    </div>
+                    <div class="well">
+                        <canvas style="display:none;" id="preview"></canvas>
+                        <button id="btn_start_screen_capture">Share your screen</button><br>
+                        <video id="video_display_screen" autoplay=true style="width:100%;z-index: -100;"></video>
+                    </div>
+                </div>
+                <div class="col-md-8" id="message_area" style="display:none">
+                    <label for="chat" id="current_peer" style="font-weight: bold;">No Peer</label>
+                    <div class="chat" id="chat" style="background-color:#f1f1f1"></div>
+                    <div class="form-group">
+                        <label for="message" style="font-weight: bold;">Enter Message</label>
+                        <input id="message" class="form-control" type="text"/>
+                        <br>
+                        <button class="btn btn-primary submit-button" id="btn_send_message">Send Message</button>
+                    </div>
+                </div>
+                <div class="col-md-8" id="shared_screen_area" style="display:none">
+                    <img id="img_shared_screen_main" style="width:100%"/>
+                    <video id="my-video" autoplay=true style="width:100%;z-index: -100;"></video>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+    <script>
+        $('input[type="text"]').keypress(function (e) {
+            var code = e.keyCode || e.which;
+            if (code === 13){
+                e.preventDefault();
+                $(this).parent().find('.submit-button').trigger('click');
+            }
+        });
+        $(function(){
+            // var socket = io('localhost:3000');
+            var socket = io('https://snmsocket.herokuapp.com/');
+            socket.on('connect',function(){
+                console.log("Connected to server");
+            });
+
+            var $sharedScreenArea = $('#shared_screen_area');
+            var $sharedScreenImg = $('#img_shared_screen_main');
+            var $mainArea = $('#main_area');
+            var $messageArea = $('#message_area');
+            var $btnSendMessage = $('#btn_send_message');
+            var $message = $('#message');
+            var $chat = $('#chat');
+            var $currentPeer = $('#current_peer');
+            $mainArea.hide();
+            $btnSendMessage.prop('disabled',true);
+            $message.prop('disabled',true);
+
+            var $userFormArea = $('#user_form_area');
+            var $userForm = $('#user_form');
+            var $name = $('#name');
+            var $btnLogin = $('#btn_login');
+            var $users = $('#ul_users');
+
+            $btnSendMessage.click(function(){
+                console.log("sent: ",$message.val());
+                // socket.emit('send_message',$message.val());
+                $chat.append('<div class="well">'+user.name+': '+$message.val()+'</div>');
+                for(var i = 0; i<connections.length; i++){
+                    if(connections[i].rtcConnection.connected){
+                        connections[i].rtcConnection.dataChannel.send(JSON.stringify(
+                        {   
+                            type:"message",
+                            sender_id:user.id,
+                            sender_name:user.name,
+                            target_id: connections[i].peer_id,
+                            data:$message.val()
+                        }));
+                    }
+                }
+                $message.val('');
+            });
+            socket.on('new_message',function(data){
+                // $chat.append('<div class="well">'+data.message+'</div>')
+
+                console.log(data.message.name,user.name,data.message.signal);
+                var sender = data.message;
+                if(sender.name != user.name&&sender.peer_name == user.name){
+                    var newConnection = true;
+                    for(var i = 0; i<connections.length; i++){
+                        if(connections[i].peer_name == sender.name){
+                            newConnection = false;
+                            connections[i].rtcConnection.handleSignalingMessage(sender.signal);
+                            break;
+                        }
+                    }
+                    if(newConnection){
+                        connections.push(new Connection(sender.name,sender.id,createNewConnection(sender.name,sender.id)));
+                        connections[connections.length-1].rtcConnection.handleSignalingMessage(sender.signal);
+                    }
+                }
+            });
+            $btnLogin.click(function(){
+                if($name.val()){
+                    user.name = $name.val();
+                    $('#h3_user_name').text(user.name);
+                    socket.emit('join',user.name,function(data){
+                        if(data>=0){
+                            $userFormArea.hide();
+                            $mainArea.show();
+                            user.id = data;
+                        }
+                    });
+                }
+            });
+            var onlineList = [];
+            socket.on('new_user',function(data){
+                $users.html('');
+                onlineList= [];
+                for(var i = 0; i<data.length;i++){
+                    var html=
+                        '<li class="list-group-item user-name" >'
+                        +'<p style="cursor: pointer;display:inline" tag="'+data[i].id+'">'+data[i].name+'</p>';
+                    if(data[i].id != user.id) html+=
+                        '<div style="float:right">'
+                        +'<img style="width:50px;height:50px;display:inline;" id="img_online_'+data[i].id+'"/>'
+                        +'<button class="btn-message" peer_id="'+data[i].id+'"'
+                            +'id="btn_message_'+data[i].id+'" peer_name="'+data[i].name+'">'
+                            +'Message</button>'
+                        +'<button class="btn-shared-screen" peer_id="'+data[i].id+'"'
+                        +'id="btn_shared_screen_'+data[i].id+'">Screen</button>'
+                        +'</div>';
+                    html+=
+                        '</li>';
+                    $users.append(html);
+                    if(data[i].id != user.id){
+                        data[i].displayTarget = $(document).find('#img_online_'+data[i].id)[0];
+                        data[i].btnMessage = $(document).find('#btn_message_'+data[i].id)[0];
+                        data[i].btnSharedScreen = $(document).find('#btn_shared_screen_'+data[i].id)[0];
+                    }
+                    onlineList.push(data[i]);
+                    // console.log(onlineList);
+                }
+            });
+            var $btnConnectToPeer = $('#btn_connect_to_peer');
+            $btnConnectToPeer.click(function(){
+            });
+            $(document).on('click','.btn-shared-screen',function(){
+                if($sharedScreenArea.css('display')=='none'){
+                    $sharedScreenArea.show();
+                }
+                var messageAreaShowing = $messageArea.css('display')!='none';
+                if(messageAreaShowing){
+                    $messageArea.hide();
+                }
+                for(var i = 0; i<onlineList.length; i++){
+                    if(messageAreaShowing){
+                        if(onlineList[i].btnMessage)
+                        onlineList[i].btnMessage.disabled = false;
+                    }
+                    if(onlineList[i].btnSharedScreen)
+                        onlineList[i].btnSharedScreen.disabled = false;
+                }
+
+                user.currentScreen = $(this).attr('peer_id');
+                $(this)[0].disabled = true;
+            });
+            $(document).on('click','.btn-message',function(e){
+
+                if($messageArea.css('display')=='none'){
+                    $messageArea.show();
+                }
+                if($sharedScreenArea.css('display')!='none'){
+                    $sharedScreenArea.hide();
+                    for(var i = 0; i<onlineList.length; i++){
+                        if(onlineList[i].btnSharedScreen)
+                            onlineList[i].btnSharedScreen.disabled = false;
+                    }
+                }
+
+                var peer_id = parseInt($(this).attr("peer_id"),10);
+                if(peer_id == -1){
+                    console.log("wrong peer id",peer_id);
+                    return;
+                }
+                if(peer_id!=user.id){
+                    var peer_name = $(this).attr('peer_name');
+                    console.log(peer_id);
+                    var newConnection = true;
+                    for(var i = 0; i<connections.length; i++){
+                        if(connections[i].peer_id == peer_id){
+                            newConnection = false;
+                            if(!connections[i].rtcConnection.connected)
+                                connections[i].rtcConnection.connect();
+                            else{
+                                $(this)[0].disabled = true;
+                            }
+                            break;
+                        }
+                    }
+                    if(newConnection){
+                        connections.push(new Connection(peer_name,peer_id,createNewConnection(peer_name,peer_id)));
+                        connections[connections.length-1].rtcConnection.connect();
+                    }
+                }
+            });
+            $(document).on('click','.btn-remove-peer',function(){
+                var peer_id = $(this).attr('tag');
+                console.log("Disconnect to ",peer_id);
+                for(var i = 0; i<connections.length; i++){
+                    if(peer_id == connections[i].peer_id){
+                        connections[i].rtcConnection.destroy();
+                        break;
+                    }
+                }
+            });
+            let user = {};
+            user.name = "No Name";
+            user.currentScreen = 0;
+            class Connection{
+                constructor(peer_name,id,rtcConnection){
+                    this.peer_name = peer_name;
+                    this.peer_id = id;
+                    this.rtcConnection = rtcConnection;
+                }
+            };
+            let connections = [];
+            function getAllPeerNames(){
+                var name = "";
+                if(connections.length == 0)name="No connection";
+                for(var i = 0; i<connections.length; i++){
+                    name+=connections[i].peer_name + '<button class="btn-remove-peer" tag="'+connections[i].peer_id+'">x</button>';
+                }
+                return name;
+            }
+
+            function createNewConnection(peerName,peerId){
+                let localConnection = new WebRTCConnection();
+                localConnection.connected = false;
+                localConnection.onerror = function(error){}
+                localConnection.onopen = function(e){
+                    console.log("WebRTC Connection ready",e,peerName,peerId);
+
+                    if($messageArea.css('display')!='none'){
+                        for(var i = 0; i<onlineList.length; i++){
+                            if(onlineList[i].id == peerId){
+                                onlineList[i].btnMessage.disabled = true;
+                                break;
+                            }
+                        }
+                    }
+                    $btnConnectToPeer.prop('disabled',true);
+                    $currentPeer.html(getAllPeerNames());
+                    $btnSendMessage.prop('disabled',false);
+                    $message.prop('disabled',false);
+
+                    localConnection.connected = true;
+                }
+                localConnection.onclose = function(e){
+                    localConnection.connected = false;
+
+                    for(var i = 0; i<onlineList.length; i++){
+                        if(onlineList[i].id == peerId){
+                            onlineList[i].btnMessage.disabled = false;
+                            break;
+                        }
+                    }
+                    
+                    for(var i = 0; i<connections.length; i++){
+                        if(connections[i].rtcConnection == localConnection){
+                            connections.splice(i,1);
+                            $currentPeer.html(getAllPeerNames());
+                            console.log("disconnected",connections);
+                            break;
+                        }
+                    }
+
+                    if(connections.length == 0){
+                        console.log("WebRTC Connection terminated",e);
+                        $btnConnectToPeer.prop('disabled',false);
+                        $btnSendMessage.prop('disabled',true);
+                        $message.prop('disabled',true);
+
+                    }
+                }
+                localConnection.onmessage = function(e){
+                    const message = JSON.parse(e.data);
+                    if(message.target_id == user.id){
+                        if(message.type=="stream"){
+                            for(var i = 0;i<onlineList.length; i++){
+                                    if(onlineList[i].id == message.sender_id){
+                                        onlineList[i].displayTarget.src = message.data;
+                                        break;
+                                    }
+                                }
+                            if($sharedScreenArea.css('display')!='none'){
+                                if(user.currentScreen == message.sender_id)
+                                    $sharedScreenImg[0].src = message.data;
+                            }
+                        }
+                        else if(message.type == "message"){
+                            $chat.append('<div class="well">'+message.sender_name+': '+message.data+'</div>');
+                        }
+                    }
+                }
+                localConnection.sendSignalingMessage = function(e){
+                    socket.emit('send_message',{name:user.name,id:user.id,signal:e,peer_name:peerName,peer_id:peerId});
+                }
+                return localConnection;
+            }
+
+            var videoElement = $('#video_display_screen')[0];
+            //sharing the screen
+            $('#btn_start_screen_capture').on('click',function(){
+                if(videoElement.srcObject == null){
+                    $(this).text('Stop sharing');
+                    navigator.mediaDevices.getDisplayMedia()
+                    .then(stream =>{
+                        try {
+                            videoElement.srcObject = stream;
+                        } 
+                        
+                        catch (error) {
+                            videoElement.src = URL.createObjectURL(stream);
+                        }
+
+                        setInterval(function(){
+                            Draw(videoElement,context);
+                        },0.05);
+                    });
+                }else{
+                    $(this).text('Start sharing screen');
+                    videoElement.srcObject.getTracks().forEach(track => track.stop());
+                    videoElement.srcObject = null;
+                }
+            });
+            var canvas = document.getElementById("preview");
+            var context = canvas.getContext('2d');
+            canvas.width = 600;
+            canvas.height = 400;
+            context.width = canvas.width;
+            context.height = canvas.height;
+            function Draw(video,context){
+                context.drawImage(video,0,0,context.width,context.height);
+                // socket.emit('stream',canvas.toDataURL('image/webp'));
+                for(var i = 0; i<connections.length; i++){
+                    connections[i].rtcConnection.dataChannel.send(JSON.stringify(
+                        {type:"stream",
+                        sender_name:user.name,
+                        sender_id:user.id,
+                        target_id:connections[i].peer_id,
+                        data:canvas.toDataURL('image/webp')}));
+                }
+            }
+
+        });
+    </script>
+</body>
+</html>

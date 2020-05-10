@@ -31,9 +31,10 @@ io.sockets.on('connection',function(socket){
     });
     //new user
     socket.on('join',function(data,callback){
-        callback(true);
+        const id = users.length;
+        callback(id);
         socket.username = data;
-        users.push(socket.username);
+        users.push({name:socket.username,id:id});
         updateUserNames();
     });
     
